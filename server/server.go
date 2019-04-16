@@ -2,12 +2,15 @@ package server
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"os/exec"
 	"path/filepath"
 
+	"github.com/gernest/go-wasm-server/embed"
 	"github.com/urfave/cli"
 )
 
@@ -40,17 +43,32 @@ func serve(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	idx := "cmd/server/index.html"
-	v, err := Asset(idx)
+	file := "/wasm_exec"
+	fs := embed.New()
+	js, err := fs.Open(file + ".js")
 	if err != nil {
 		return err
 	}
+	defer js.Close()
+	html, err := fs.Open(file + ".html")
+	if err != nil {
+		return err
+	}
+	defer html.Close()
+	wasm, err := ioutil.ReadFile(filepath.Join(a, "main.wasm"))
+	if err != nil {
+		return err
+	}
+
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/":
-			w.Write(v)
+			io.Copy(w, html)
+		case file + ".js":
+			io.Copy(w, js)
 		case "/main.wasm":
-			http.ServeFile(w, r, filepath.Join(a, "main.wasm"))
+			w.Write(wasm)
+			w.Header().Set("Content-Type", "application/wasm")
 		default:
 			v, err := httputil.DumpRequest(r, true)
 			if err != nil {
